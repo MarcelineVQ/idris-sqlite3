@@ -1,0 +1,10 @@
+package sqlite3
+
+modules = SQLite 3
+        , SQLite3.Internal.Types
+        , SQLite3.Internal.Primitive
+        , Test
+
+sourcedir = "src"
+
+depends = network, contrib
