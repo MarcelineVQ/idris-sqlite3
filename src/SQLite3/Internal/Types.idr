@@ -2,6 +2,10 @@ module SQLite3.Internal.Types
 
 import SQLite3.Internal.Primitive
 
+import public SQLite3.Internal.Types.Code
+
+import Data.Vect
+
 -- https://www.sqlite.org/c3ref/c_abort.html
 public export
 data SqlResult : Type where
@@ -74,6 +78,11 @@ fromInt 101 = SQLITE_DONE
 fromInt _   = Unknown
 
 public export
+FromCode SqlResult where
+  fromCode = Just . fromInt
+  unsafeFromCode = fromInt
+
+public export
 toInt : SqlResult -> Int
 toInt SQLITE_OK         = 0
 toInt SQLITE_ERROR      = 1
@@ -106,13 +115,112 @@ toInt SQLITE_NOTICE     = 27
 toInt SQLITE_WARNING    = 28
 toInt SQLITE_ROW        = 100
 toInt SQLITE_DONE       = 101
+toInt Unknown           = -1
 
+public export
+ToCode SqlResult where
+  toCode = toInt
+
+public export
 implementation
 Eq SqlResult where
   x == y = toInt x == toInt y
 
 resultString : Int -> String
-resultString = sqlite3_errstr
+resultString = unsafePerformIO . primIO . sqlite3_errstr
+
+-- public export
+-- data StepResult : SqlResult -> Type where
+--   SRBusy : StepResult SQLITE_BUSY
+--   SRDone : StepResult SQLITE_DONE
+--   SRRow : StepResult SQLITE_ROW
+--   SRError : StepResult SQLITE_ERROR
+--   SRMisuse : StepResult SQLITE_MISUSE
+--   SROther : (s : SqlResult) -> StepResult s
+
+public export
+data StepResult : Type where
+  SRBusy : StepResult
+  SRDone : StepResult
+  SRRow : StepResult
+  SRError : StepResult
+  SRMisuse : StepResult
+  -- SROther : (s : SqlResult) -> StepResult
+
+public export
+sqlRestoStepRes : (s : SqlResult) -> Maybe StepResult
+sqlRestoStepRes SQLITE_BUSY = Just SRBusy
+sqlRestoStepRes SQLITE_DONE = Just SRDone
+sqlRestoStepRes SQLITE_ROW = Just SRRow
+sqlRestoStepRes SQLITE_ERROR = Just SRError
+sqlRestoStepRes SQLITE_MISUSE = Just SRMisuse
+sqlRestoStepRes _ = Nothing
+-- sqlRestoStepRes r = SROther r
+
+-- public export
+-- stepRestoSqlRes : {s:_} -> StepResult s -> SqlResult
+-- stepRestoSqlRes SRBusy = SQLITE_BUSY
+-- stepRestoSqlRes SRDone = SQLITE_DONE
+-- stepRestoSqlRes SRRow = SQLITE_ROW
+-- stepRestoSqlRes SRError = SQLITE_ERROR
+-- stepRestoSqlRes SRMisuse = SQLITE_MISUSE
+-- stepRestoSqlRes (SROther s) = s
+-- 
+-- public export
+-- sqlRestoStepRes : (s : SqlResult) -> StepResult s
+-- sqlRestoStepRes SQLITE_BUSY = SRBusy
+-- sqlRestoStepRes SQLITE_DONE = SRDone
+-- sqlRestoStepRes SQLITE_ROW = SRRow
+-- sqlRestoStepRes SQLITE_ERROR = SRError
+-- sqlRestoStepRes SQLITE_MISUSE = SRMisuse
+-- sqlRestoStepRes r = SROther r
 
 
---
+-- e.g. bytestring
+data Blob : Type where
+
+{-
+sqlite3_column_blob	→	BLOB result
+sqlite3_column_double	→	REAL result
+sqlite3_column_int	→	32-bit INTEGER result
+sqlite3_column_int64	→	64-bit INTEGER result
+sqlite3_column_text	→	UTF-8 TEXT result
+sqlite3_column_text16	→	UTF-16 TEXT result
+sqlite3_column_value	→	The result as an unprotected sqlite3_value object.
+ 	 	 
+sqlite3_column_bytes	→	Size of a BLOB or a UTF-8 TEXT result in bytes
+sqlite3_column_bytes16  	→  	Size of UTF-16 TEXT in bytes
+sqlite3_column_type	→	Default datatype of the result
+-}
+
+data SqlColTypes = SQLITE_INTEGER | SQLITE_FLOAT| SQLITE_TEXT | SQLITE_BLOB | SQLITE_NULL
+
+infixr 5 .+.
+
+data Schema = SBlob | SDouble | SInt | SIn64 | SText | SText16 | SValue | (.+.) Schema Schema
+-- data Schema' = SBlob | SDouble | SInt | SIn64 | SText | SText16 | SValue
+
+SchemaType : Schema -> Type
+SchemaType SBlob = Blob
+SchemaType SDouble = Double
+SchemaType SInt = Int
+SchemaType SIn64 = Int64
+SchemaType SText = String
+SchemaType SText16 = String -- fornow
+SchemaType SValue = () -- not dealing with this right now
+SchemaType (x .+. y) = (SchemaType x, SchemaType y)
+
+record Table where
+  constructor MkTable
+  schema : Schema
+  size : Nat
+  items : Vect size (SchemaType schema)
+
+-- double sqlite3_column_double(sqlite3_stmt*, int iCol);
+
+-- given a schema and an index use the right function for the type
+sqlite3_column : (s : Schema) -> (i : Nat) -> IO (SchemaType s)
+
+
+-- data Schema : List Type -> Type where
+  
