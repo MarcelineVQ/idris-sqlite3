@@ -6,10 +6,6 @@ module SQLite3.Internal.Primitive
 
 -- | Backend Wrappers
 export
-libsqlite3 : String -> String
-libsqlite3 fn = "C:" ++ fn ++ ",libsqlite3"
-
-export
 idris_sqlite : String -> String
 idris_sqlite fn = "C:" ++ fn ++ ",idris_sqlite"
 
@@ -20,11 +16,9 @@ idris_sqlite fn = "C:" ++ fn ++ ",idris_sqlite"
 export
 data DBPtr : Type where
 
--- things like sqlite3_open take a pointer to a sqlite3*, not a sqlite3*
--- So we track both
 public export
 data DB : Type where
-  MkDB : (db_ptr : Ptr (Ptr DBPtr)) -> (db : Ptr DBPtr) -> DB
+  MkDB : (db : Ptr DBPtr) -> DB
 
 --------------------------------------------------
 
@@ -33,7 +27,7 @@ data StmtPtr : Type where
 
 public export
 data Stmt : Type where
-  MkStmt : (stmt_ptr : Ptr (Ptr StmtPtr)) -> (stmt : Ptr StmtPtr) -> Stmt
+  MkStmt : (stmt : Ptr StmtPtr) -> Stmt
 
 --------------------------------------------------
 
@@ -48,70 +42,121 @@ export
 ptr_free : AnyPtr -> PrimIO ()
 
 export
+ptrFree : HasIO io => Ptr t -> io ()
+ptrFree ptr = primIO $ ptr_free $ prim__forgetPtr ptr
+
+export
 %foreign (idris_sqlite "null")
 null : PrimIO AnyPtr
 
 export
-%foreign (libsqlite3 "sqlite3_free")
-sqlite3_free : AnyPtr -> PrimIO AnyPtr
+%foreign (idris_sqlite "deref")
+deref : Ptr AnyPtr -> PrimIO AnyPtr
 
-export
-%foreign (libsqlite3 "sqlite3_malloc")
-sqlite3_malloc : Int -> PrimIO AnyPtr
-
-
-export
-%foreign (libsqlite3 "sqlite3_open")
-sqlite_open : String -> Ptr (Ptr DBPtr) -> PrimIO Int
+--------------------------------------------------
 
 export
 %foreign (idris_sqlite "sqlver")
 sqlite_ver : PrimIO ()
 
 export
-%foreign (idris_sqlite "deref")
-deref : Ptr AnyPtr -> PrimIO AnyPtr
+%foreign (idris_sqlite "sqlite3_free")
+sqlite3_free : AnyPtr -> PrimIO AnyPtr
+
+export
+%foreign (idris_sqlite "sqlite3_malloc")
+sqlite3_malloc : Int -> PrimIO AnyPtr
+
+export
+%foreign (idris_sqlite "sqlite3_open")
+sqlite_open : String -> Ptr (Ptr DBPtr) -> PrimIO Int
 
 -- open takes an sqlite3**
 export
-%foreign (libsqlite3 "sqlite3_open_v2")
+%foreign (idris_sqlite "sqlite3_open_v2")
 sqlite_open_v2 : String -> Ptr (Ptr DBPtr) -> Int -> String -> PrimIO Int
 
 export
-%foreign (libsqlite3 "sqlite3_close")
+%foreign (idris_sqlite "sqlite3_close")
 sqlite_close : Ptr DBPtr -> PrimIO Int
 
 export
 %foreign (idris_sqlite "sqlite3_prepare_v2")
-sqlite_prepare : Ptr DBPtr -> String -> Int -> Ptr (Ptr StmtPtr) -> Ptr String -> PrimIO Int
+sqlite_prepare : Ptr DBPtr -> String -> Int -> Ptr (Ptr StmtPtr) -> Ptr (Ptr String) -> PrimIO Int
 
 export
-%foreign (idris_sqlite "sqlite3_prepare_v2")
+%foreign (idris_sqlite "sqlite3_step")
 sqlite_step : Ptr StmtPtr -> PrimIO Int
 
 export
-%foreign (libsqlite3 "sqlite3_exec")
+%foreign (idris_sqlite "sqlite3_exec")
 sqlite_exec : Ptr DBPtr -> String -> AnyPtr -> AnyPtr -> Ptr String -> PrimIO Int
 
 export
-%foreign (libsqlite3 "sqlite3_finalize")
+%foreign (idris_sqlite "sqlite3_finalize")
 sqlite3_finalize : Ptr StmtPtr -> PrimIO Int
 
 export
-%foreign (libsqlite3 "sqlite3_extended_errcode")
+%foreign (idris_sqlite "sqlite3_extended_errcode")
 sqlite3_extended_errcode : Ptr DBPtr -> PrimIO Int
 
 export
-%foreign (libsqlite3 "sqlite3_errmsg")
+%foreign (idris_sqlite "sqlite3_errmsg")
 sqlite3_errmsg : Ptr DBPtr -> PrimIO String
 
 export
-sqlite3ErrMsg : HasIO io => DB -> io String
-sqlite3ErrMsg (MkDB _ db) = primIO $ sqlite3_errmsg db
+%foreign (idris_sqlite "sqlite3_errstr")
+sqlite3_errstr : Int -> PrimIO String
 
 export
-%foreign (libsqlite3 "sqlite3_errstr")
-sqlite3_errstr : Int -> PrimIO String
+sqlite3ErrMsg : HasIO io => DB -> io String
+sqlite3ErrMsg (MkDB db) = primIO $ sqlite3_errmsg db
+
+--------------------------------------------------
+-- Column Functions
+-- https://www.sqlite.org/c3ref/column_blob.html
+--------------------------------------------------
+
+export
+%foreign (idris_sqlite "sqlite3_column_text")
+sqlite3_column_text : Ptr StmtPtr -> (iCol : Int) -> PrimIO String
+
+export
+sqlite3ColumnText : HasIO io => Stmt -> (iCol : Int) -> io String
+sqlite3ColumnText (MkStmt stmt) i = primIO $ sqlite3_column_text stmt i
+
+export
+%foreign (idris_sqlite "sqlite3_column_double")
+sqlite3_column_double : Ptr StmtPtr -> (iCol : Int) -> PrimIO Double
+
+export
+sqlite3ColumnDouble : HasIO io => Stmt -> (iCol : Int) -> io Double
+sqlite3ColumnDouble (MkStmt stmt) i = primIO $ sqlite3_column_double stmt i
+
+export
+%foreign (idris_sqlite "sqlite3_column_int")
+sqlite3_column_int : Ptr StmtPtr -> (iCol : Int) -> PrimIO Int
+
+export
+sqlite3ColumnInt : HasIO io => Stmt -> (iCol : Int) -> io Int
+sqlite3ColumnInt (MkStmt stmt) i = primIO $ sqlite3_column_int stmt i
+
+-- double sqlite3_column_double(sqlite3_stmt*, int iCol);
+
+--------------------------------------------------
+-- Binding Functions
+-- https://www.sqlite.org/c3ref/bind_blob.html
+--------------------------------------------------
+-- Probably not gonna bother, we can assemble strigs programatically
+
+export
+%foreign (idris_sqlite "sqlite3_bind_text")
+sqlite3_bind_text : Ptr StmtPtr -> (iArg : Int) -> String -> Int -> AnyPtr -> PrimIO Int
+
+-- int sqlite3_bind_text(sqlite3_stmt*,int,const char*,int,void(*)(void*));
+
+--------------------------------------------------
+
 
 export
 newAnyPtr : HasIO io => io AnyPtr
@@ -132,22 +177,32 @@ export
 mkString : String -> PrimIO (Ptr String)
 
 export
+strToPtr : HasIO io => String -> io (Ptr String)
+strToPtr x = primIO $ mkString x
+
+export
 %foreign (idris_sqlite "getString")
 getString : Ptr String -> PrimIO String
+
+export
+ptrToStr : HasIO io => Ptr String -> io String
+ptrToStr x = primIO $ getString x
 
 
 -- | Non-IO Primitives
 
 -- export
--- %foreign (libsqlite3 "sqlite3_errstr")
+-- %foreign (idris_sqlite "sqlite3_errstr")
 -- sqlite3_errstr : Int -> PrimIO String
 
-export
-%foreign (idris_sqlite "null")
-nullStr' : PrimIO (Ptr String)
+
+
+-- export
+-- nullStr : Ptr String
+-- nullStr = unsafePerformIO $ primIO $ nullStr'
 
 export
-nullStr : Ptr String
-nullStr = unsafePerformIO $ primIO $ nullStr'
+nullPtr : Ptr t
+nullPtr = prim__castPtr $ unsafePerformIO $ primIO $ null
 
 --

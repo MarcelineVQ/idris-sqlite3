@@ -1,4 +1,5 @@
-package sqlite3-0_0_0_1
+package sqlite3
+version     = 0.0.1.1
 
 sourcedir   = "src"
 main        = SQLite3
@@ -6,10 +7,9 @@ executable  = "Fef"
 
 depends     = base
             , contrib
+            , managed
 
-modules     = SQL
-            , SQLite3
+modules     = SQLite3
             , SQLite3.Internal.Primitive
             , SQLite3.Internal.Types
             , SQLite3.Internal.Types.Code
-            , Test

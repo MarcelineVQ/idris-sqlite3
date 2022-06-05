@@ -1,9 +1,10 @@
 package: sqlite3
-version: 0.0.0.1
+version: 0.0.1.1
 
 depends:
 - base
 - contrib
+- managed
 # - idris2-sop
 
 main: SQLite3
